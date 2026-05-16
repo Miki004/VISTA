@@ -9,7 +9,7 @@ from transformers import (
 )
 from qwen_vl_utils import process_vision_info
 from vllm import LLM, SamplingParams
-from .utils import set_seed, image_to_base64, resize_image, log
+from .utils_fun import set_seed, image_to_base64, resize_image, log
 from unsloth import FastVisionModel
 import torch
 
