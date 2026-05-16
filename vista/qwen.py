@@ -1,4 +1,7 @@
 from typing import Dict
+from lmformatenforcer import JsonSchemaParser
+from lmformatenforcer.integrations.transformers import build_transformers_prefix_allowed_tokens_fn
+
 from transformers import (
     AutoModel,
     AutoProcessor,
@@ -8,7 +11,17 @@ from transformers import (
     Qwen3VLMoeForConditionalGeneration
 )
 from qwen_vl_utils import process_vision_info
-from vllm import LLM, SamplingParams
+from vista.BindingOutput import DetectionList
+try :
+    from vllm import LLM, SamplingParams
+except ImportError:
+    LLM = SamplingParams = None
+
+try :
+	from unsloth import FastVisionModel
+except ImportError:
+	       FastVisionModel = None
+
 from .utils_fun import set_seed, image_to_base64, resize_image, log
 from unsloth import FastVisionModel
 import torch
@@ -175,10 +188,12 @@ class QwenVLUnsloth(QwenVLforObjectDetection):
         ).to("cuda")
 
     def generate(self, frame, history):
+        parser = JsonSchemaParser(DetectionList.schema())#Bruno
+        prefix_function = build_transformers_prefix_allowed_tokens_fn(self.processor.tokenizer, parser)#Bruno
         messages = build_qwen_chat(frame, self.cfg, history)
         inputs = [self.prepare_inputs_for_vllm(message) for message in [messages]][0]
 
-        outputs = self.model.generate(**inputs, **self.sampling_params)
+        outputs = self.model.generate(**inputs,prefix_allowed_tokens_fn=prefix_function, **self.sampling_params)#Bruno
         
         # Trim input_ids
         gen_ids = [out[len(inp) :] for inp, out in zip(inputs.input_ids, outputs)]
