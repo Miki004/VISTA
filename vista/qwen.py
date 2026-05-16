@@ -1,3 +1,4 @@
+from html import parser
 from typing import Dict
 from lmformatenforcer import JsonSchemaParser
 from lmformatenforcer.integrations.transformers import build_transformers_prefix_allowed_tokens_fn
@@ -132,15 +133,16 @@ class QwenVLHF(QwenVLforObjectDetection):
             return_tensors="pt",
             video_metadata=video_metadatas,
             **video_kwargs,
-        )
-        # .to(self.device)
+        ).to(self.device)
 
         log("Inputs tokenized and moved to device")
-
+        parser = JsonSchemaParser(DetectionList.schema())
+        prefix_function = build_transformers_prefix_allowed_tokens_fn(self.processor.tokenizer, parser)
         with torch.no_grad():
             # Qwen3-VL video-native
             out_ids = self.model.generate(
                 **inputs,
+                prefix_allowed_tokens_fn=prefix_function,
                 **self.sampling_params,
             )
         log("Model generation completed")
