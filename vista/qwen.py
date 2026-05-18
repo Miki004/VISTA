@@ -136,7 +136,7 @@ class QwenVLHF(QwenVLforObjectDetection):
         ).to(self.device)
 
         log("Inputs tokenized and moved to device")
-        parser = JsonSchemaParser(DetectionList.schema())
+        parser = JsonSchemaParser(DetectionList.models_schema())
         prefix_function = build_transformers_prefix_allowed_tokens_fn(self.processor.tokenizer, parser)
         with torch.no_grad():
             # Qwen3-VL video-native

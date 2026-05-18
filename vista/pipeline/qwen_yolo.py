@@ -9,7 +9,7 @@ from json_repair import repair_json
 from ultralytics import YOLO
 
 from vista.pipeline.base import Detection, FrameResult, VistaPipeline
-from vista.utils import image_to_base64, resize_image, log, IGNORE_CATEGORIES, get_emergency_level
+from vista.utils_fun import image_to_base64, resize_image, log, IGNORE_CATEGORIES, get_emergency_level
 
 
 def _iou(a, b) -> float:
