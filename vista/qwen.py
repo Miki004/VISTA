@@ -1,7 +1,5 @@
 from html import parser
 from typing import Dict
-from lmformatenforcer import JsonSchemaParser
-from lmformatenforcer.integrations.transformers import build_transformers_prefix_allowed_tokens_fn
 
 from transformers import (
     AutoModel,
@@ -40,7 +38,11 @@ def build_qwen_chat(current_frame, cfg, history):
             {"type": "text", "text": cfg["qwen"]["system_prompt"]}
         ]
     })
-
+    history_window = cfg["qwen"].get("history_window", 0)
+    if history_window > 0:
+        history = history[-history_window:]
+    else:
+        history = []
     # ----------------------------
     # Past frames + past responses
     # ----------------------------
@@ -136,13 +138,10 @@ class QwenVLHF(QwenVLforObjectDetection):
         ).to(self.device)
 
         log("Inputs tokenized and moved to device")
-        parser = JsonSchemaParser(DetectionList.model_json_schema())
-        prefix_function = build_transformers_prefix_allowed_tokens_fn(self.processor.tokenizer, parser)
         with torch.no_grad():
             # Qwen3-VL video-native
             out_ids = self.model.generate(
                 **inputs,
-                prefix_allowed_tokens_fn=prefix_function,
                 **self.sampling_params,
             )
         log("Model generation completed")
@@ -190,12 +189,10 @@ class QwenVLUnsloth(QwenVLforObjectDetection):
         ).to("cuda")
 
     def generate(self, frame, history):
-        parser = JsonSchemaParser(DetectionList.schema())#Bruno
-        prefix_function = build_transformers_prefix_allowed_tokens_fn(self.processor.tokenizer, parser)#Bruno
         messages = build_qwen_chat(frame, self.cfg, history)
         inputs = [self.prepare_inputs_for_vllm(message) for message in [messages]][0]
 
-        outputs = self.model.generate(**inputs,prefix_allowed_tokens_fn=prefix_function, **self.sampling_params)#Bruno
+        outputs = self.model.generate(**inputs, **self.sampling_params)#Bruno
         
         # Trim input_ids
         gen_ids = [out[len(inp) :] for inp, out in zip(inputs.input_ids, outputs)]
