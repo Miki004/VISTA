@@ -17,7 +17,7 @@ Install once:  pip install torchmetrics pycocotools
 
 CLI:
     python -m vista.eval_detection --data data/VistaCrash/data.yaml \
-        --split val --weights yolov8s.pt --conf 0.25
+        --split val --weights yolo12m.pt --conf 0.25
 """
 
 from __future__ import annotations

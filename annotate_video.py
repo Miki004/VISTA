@@ -199,7 +199,7 @@ def _build_qwenyolo_from_config(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+                                    formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--video", required=True, help="Input video path")
     parser.add_argument("--out", required=True, help="Output (annotated) video path")
     parser.add_argument("--config", default=None, help="QwenYolo config yaml (for the captioner)")
