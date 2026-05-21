@@ -13,6 +13,8 @@ from vista.utils_fun import image_to_base64, resize_image, log, IGNORE_CATEGORIE
 
 
 def _iou(a, b) -> float:
+    if not (a and b and len(a) >= 4 and len(b) >= 4):
+        return 0.0
     xA, yA = max(a[0], b[0]), max(a[1], b[1])
     xB, yB = min(a[2], b[2]), min(a[3], b[3])
     inter = max(0, xB - xA) * max(0, yB - yA)
@@ -33,13 +35,13 @@ class QwenYoloPipeline(VistaPipeline):
     Args:
         yolo_model:      Loaded ``ultralytics.YOLO`` instance.
         qwen_model:      Any object with a ``generate(frame, history)`` method
-                         that returns a JSON string of detections with ``bbox_2d``
-                         and ``label`` fields (see ``vista.qwen``).
+                        that returns a JSON string of detections with ``bbox_2d``
+                        and ``label`` fields (see ``vista.qwen``).
         caption_stride:  Run the VLM every this many frames. Captions are
-                         propagated between calls.
+                        propagated between calls.
         iou_threshold:   Minimum IoU to match a Qwen detection to a YOLO track.
         history_len:     Number of past (frame, response) pairs fed to the VLM
-                         as conversational context.
+                        as conversational context.
         yolo_conf:       YOLO detection confidence threshold.
     """
 
@@ -106,14 +108,22 @@ class QwenYoloPipeline(VistaPipeline):
             self._history.append((frame, raw))
 
             try:
-                parsed: list[dict] = json.loads(repair_json(raw))
+                parsed = json.loads(repair_json(raw))
             except Exception:
                 parsed = []
+                if isinstance(parsed, dict):
+                    parsed = parsed.get("detections", [])
+                if not isinstance(parsed, list):
+                    parsed = []
 
             # match each Qwen detection to the best-overlap YOLO track
             for det in parsed:
+                if not isinstance(det, dict):
+                    continue
                 qb    = det.get("bbox_2d", [])
                 label = det.get("label", "unknown")
+                if not isinstance(qb, (list, tuple)) or len(qb) != 4:
+                    continue
                 best_tid, best_iou = None, 0.0
                 for tid, tr in active.items():
                     s = _iou(qb, tr["bbox"])

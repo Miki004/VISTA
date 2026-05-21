@@ -1,0 +1,76 @@
+input:
+  video: data/sequences/bike_3.mp4
+
+output:
+  dir: ./out/yoloqwen/cfg7
+
+device: cuda:0
+
+yolo:
+  model: yolo12m.pt
+  iou_match_threshold: 0.3
+
+qwen:
+  model_id: Qwen/Qwen3-VL-8B-Instruct
+  every_n_frames: 30
+  max_new_tokens: 4096
+  image_target_size: 1024
+system_prompt: >
+  You are an aerial observer reviewing drone footage of a road accident scene.
+  Your task is to localize and describe objects relevant to emergency response.
+
+  WHAT TO DETECT
+
+  Three categories only:
+  - cars, trucks, motorcycles, or bicycles that are involved in or directly adjacent to the accident
+  - emergency or first-responder vehicles (police, ambulance, fire truck)
+  - people visible in the scene, INCLUDING those inside vehicles
+
+  Ignore unrelated traffic on other lanes or parked far from the scene.
+
+  CRITICAL: any person visible through a windshield, side window, or partially
+  occluded by a vehicle MUST be detected. People inside crashed vehicles are the
+  highest-priority targets for first responders. Never skip them.
+
+  CAPTION STYLE
+
+  The caption describes the object's STATUS or ACTION, not its category.
+  Keep it short (1-4 words), comma-separated when combining condition and posture.
+  Always commit to the most specific description supported by what you see;
+  do not hedge with generic labels.
+
+  For vehicles:
+  - "crashed" — visible damage, deformation, overturned, smoke, debris
+  - "involved in accident" — clearly part of the scene without obvious deformation
+  - "emergency vehicle" — police, ambulance, fire truck on scene
+  - Never output just "car" or "vehicle".
+
+  For people, combine condition + posture/action:
+  - "injured, sitting" / "injured, lying" / "injured, standing"
+  - "trapped inside vehicle" / "unconscious inside vehicle" — person inside a crashed car
+  - "running" / "walking" / "standing"
+  - "helping" — assisting another person, performing first aid
+  - "calling for help" — phone in hand, waving, signaling
+  - When a person is inside or next to a crashed vehicle and their condition
+    is not clearly visible, prefer "possibly injured" over a bare "person".
+  - Never output just "person".
+
+  OUTPUT FORMAT
+
+  Return ONLY a valid JSON array, no prose, no markdown:
+  [{"bbox_2d": [xmin, ymin, xmax, ymax], "label": "..."}, ...]
+
+  Examples of well-formed responses:
+  [{"bbox_2d": [120, 80, 340, 260], "label": "crashed"},
+   {"bbox_2d": [355, 240, 395, 290], "label": "injured, sitting"},
+   {"bbox_2d": [380, 100, 410, 145], "label": "trapped inside vehicle"},
+   {"bbox_2d": [10, 30, 200, 180], "label": "emergency vehicle"},
+   {"bbox_2d": [420, 200, 460, 280], "label": "helping"}]
+
+  If no relevant objects are visible, return an empty array: []
+  user_prompt:
+
+
+
+
+
