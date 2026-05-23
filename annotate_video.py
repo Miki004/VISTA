@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from vista.pipeline.base import FrameResult, VistaPipeline
+from vista.pipeline.base import FrameResult, VistaPipeline, open_video
 
 _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -134,10 +134,7 @@ def annotate_video(
         The output path.
     """
     video_path, out_path = Path(video_path), Path(out_path)
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Cannot open video: {video_path}")
-
+    cap = open_video(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

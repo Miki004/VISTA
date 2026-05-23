@@ -15,7 +15,7 @@ qwen:
   every_n_frames: 30
   max_new_tokens: 4096
   image_target_size: 1024
-system_prompt: >
+  system_prompt: >
   You are an aerial observer reviewing drone footage of a road accident scene.
   Your task is to localize and describe objects relevant to emergency response.
 

@@ -18,7 +18,7 @@ Install once:  pip install bert-score
 
 CLI:
     python -m vista.eval_era --references CapERA_DATASET_train.json \
-        --submission workspace/vista_output/submission.csv
+        --submission workspace/vista_output/submission.csv  --skip-empty
     python -m vista.eval_era --references CapERA_DATASET_train.json \
         --predictions preds.json --out era_bertscore.json
 """
@@ -33,9 +33,35 @@ from pathlib import Path
 
 
 def _norm_id(video_id: str) -> str:
-    """Normalize a video id for matching (drop extension, lower-case)."""
-    return Path(str(video_id)).stem.lower()
+    """Normalize a video id for matching (trim, drop extension, lower-case)."""
+    return Path(str(video_id).strip()).stem.strip().lower()
+    
+def _load_json_lenient(path: str | Path):
+    """Parse CapERA JSON, tolerating a few malformed-but-common shapes.
 
+    Handles: a valid JSON document; a bracket-less, comma-separated sequence of
+    objects (``{...},\\n{...}``); and JSON Lines (one object per line).
+    """
+    text = Path(path).read_text(encoding="utf-8").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    wrapped = text
+    if not wrapped.startswith("["):
+        wrapped = "[" + wrapped.rstrip().rstrip(",") + "]"
+    try:
+        return json.loads(wrapped)
+    except json.JSONDecodeError:
+        pass
+
+    records = []
+    for line in text.splitlines():
+        line = line.strip().rstrip(",")
+        if line:
+            records.append(json.loads(line))
+    return records
 
 def load_capera_references(
     path: str | Path, prefix: str | None = "TrafficCollision"
@@ -46,8 +72,7 @@ def load_capera_references(
     keyed by video id. Each record exposes ``annotation.English_caption``.
     Filtered to ``prefix`` (e.g. only TrafficCollision_*) when given.
     """
-    with Path(path).open("r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_json_lenient(path)
 
     records: list[dict] = []
     if isinstance(data, list):
@@ -102,21 +127,36 @@ def compute_bertscore(
     lang: str = "en",
     model_type: str | None = None,
     rescale_with_baseline: bool = True,
+    skip_empty: bool = False,
 ) -> dict:
     """Compute multi-reference BERTScore-F1 over the matched videos.
 
-    Returns a dict with the corpus mean P/R/F1 and per-video F1 scores. Only
-    videos present in both candidates and references are scored.
+    Returns a dict with the corpus mean P/R/F1 and per-video F1 scores.Videos present in both candidates and references are scored. When
+    ``skip_empty`` is set, videos whose predicted caption is empty are excluded
+    (otherwise BERTScore scores them 0, which becomes strongly negative under
+    rescale_with_baseline and drags the mean down).
     """
     from bert_score import score as bert_score
 
     matched = [vid for vid in references if vid in candidates]
     if not matched:
+        ref_sample = sorted(references)[:5]
+        cand_sample = sorted(candidates)[:5]
         raise RuntimeError(
-            "No overlapping video ids between predictions and references. "
-            "Check that submission video ids match CapERA (e.g. TrafficCollision_001)."
+            "No overlapping video ids between predictions and references.\n"
+            f"  reference ids (e.g.): {ref_sample}\n"
+            f"  prediction ids (e.g.): {cand_sample}\n"
+            "The submission must be generated on the SAME videos as the references "
+            "(the CapERA TrafficCollision_* clips), not on other footage."
         )
 
+    num_empty = sum(1 for vid in matched if not candidates[vid].strip())
+    if skip_empty:
+        matched = [vid for vid in matched if candidates[vid].strip()]
+        if not matched:
+            raise RuntimeError(
+                "All matched candidates are empty after --skip-empty; nothing to score."
+            )
     cands = [candidates[vid] for vid in matched]
     refs = [references[vid] for vid in matched]  # list[list[str]] -> multi-ref
 
@@ -134,16 +174,20 @@ def compute_bertscore(
         "num_references": len(references),
         "num_candidates": len(candidates),
         "num_unmatched_references": len([v for v in references if v not in candidates]),
+        "num_empty": num_empty,
+        "skipped_empty": skip_empty,
         "per_video_f1": per_video,
     }
 
 
 def print_summary(result: dict) -> None:
+    empty_note = "skipped" if result.get("skipped_empty") else "scored as 0"
     print(
         f"Scored {result['num_scored']}/{result['num_references']} videos "
         f"(predictions available: {result['num_candidates']}, "
-        f"unmatched refs: {result['num_unmatched_references']})"
-    )
+        f"unmatched refs: {result['num_unmatched_references']}, "
+        f"empty candidates: {result['num_empty_candidates']} [{empty_note}])"
+        )
     print(f"  BERTScore-F1        = {result['bertscore_f1']:.4f}")
     print(f"  BERTScore-Precision = {result['bertscore_precision']:.4f}")
     print(f"  BERTScore-Recall    = {result['bertscore_recall']:.4f}")
@@ -156,6 +200,8 @@ def main() -> None:
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--submission", help="submission.csv with a 'caption' column")
     src.add_argument("--predictions", help="JSON mapping {video_id: caption}")
+    parser.add_argument("--skip-empty", action="store_true",
+                        help="Exclude videos with an empty predicted caption from the score")
     parser.add_argument("--prefix", default="TrafficCollision",
                         help="Filter references by video-id prefix ('' = no filter)")
     parser.add_argument("--lang", default="en", help="BERTScore language")
@@ -176,6 +222,7 @@ def main() -> None:
         candidates, references,
         lang=args.lang, model_type=args.model_type,
         rescale_with_baseline=not args.no_rescale,
+        skip_empty=args.skip_empty,
     )
     print_summary(result)
 

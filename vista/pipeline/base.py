@@ -3,11 +3,51 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Iterator
-
+import os 
 import cv2
 from PIL import Image
 
+def open_video(video_path: str) -> cv2.VideoCapture:
+    """Open ``video_path`` with OpenCV, raising a diagnostic error on failure.
 
+    ``cv2.VideoCapture`` reports failure with a single bool, which makes
+    "Cannot open video" useless for telling apart a missing file, an empty or
+    truncated download, an un-pulled Git LFS pointer, or a genuine
+    codec/backend problem. This inspects the file and raises a message that
+    names the actual cause.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if cap.isOpened():
+        return cap
+    cap.release()
+
+    if not os.path.exists(video_path):
+        raise RuntimeError(
+            f"Cannot open video: {video_path} — file does not exist "
+            f"(cwd={os.getcwd()})."
+        )
+    if os.path.isdir(video_path):
+        raise RuntimeError(f"Cannot open video: {video_path} — path is a directory.")
+    if not os.access(video_path, os.R_OK):
+        raise RuntimeError(f"Cannot open video: {video_path} — file is not readable.")
+
+    size = os.path.getsize(video_path)
+    if size == 0:
+        raise RuntimeError(f"Cannot open video: {video_path} — file is empty (0 bytes).")
+
+    with open(video_path, "rb") as f:
+        head = f.read(64)
+    if head.startswith(b"version https://git-lfs"):
+        raise RuntimeError(
+            f"Cannot open video: {video_path} — file is an unresolved Git LFS "
+            f"pointer ({size} bytes). Run `git lfs pull` to download the content."
+        )
+
+    raise RuntimeError(
+        f"Cannot open video: {video_path} — file exists ({size} bytes) but "
+        f"OpenCV could not decode it. The codec may be unsupported by this "
+        f"OpenCV build (missing FFMPEG backend) or the file may be corrupt."
+    )
 # ── output primitives ─────────────────────────────────────────────────────────
 
 @dataclass
@@ -121,9 +161,7 @@ class VistaPipeline(ABC):
         """
         self.reset()
 
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise RuntimeError(f"Cannot open video: {video_path}")
+        cap = open_video(video_path)
 
         if start_frame > 0:
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
