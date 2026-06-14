@@ -174,7 +174,7 @@ def compute_bertscore(
         "num_references": len(references),
         "num_candidates": len(candidates),
         "num_unmatched_references": len([v for v in references if v not in candidates]),
-        "num_empty": num_empty,
+        "num_empty_candidates": num_empty,
         "skipped_empty": skip_empty,
         "per_video_f1": per_video,
     }

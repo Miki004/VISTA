@@ -158,7 +158,7 @@ class QwenCropCaptioner:
     """
 
     def __init__(self, qwen_model, allowed_labels: list[str] | None = None,
-                 system_prompt: str | None = None):
+                system_prompt: str | None = None):
         self.qwen = qwen_model
         from vista.BindingOutput import LABELS
         self.allowed_labels = allowed_labels or list(LABELS.__args__)
@@ -267,18 +267,19 @@ def build_mypipeline_from_config(
     if config_path:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
-
+    
+    qcfg = cfg.get("qwen", {})
     yolo = YOLO(yolo_weights)
     captioner: CropCaptioner | None = None
     if use_qwen:
         from vista.qwen import get_model
         qwen = get_model(cfg)
-        captioner = QwenCropCaptioner(qwen)
+        captioner = QwenCropCaptioner(qwen, system_prompt=qcfg.get("system_prompt"))
 
     return MyPipeline(
         yolo_model=yolo,
         captioner=captioner,
-        caption_stride=caption_stride,
+        caption_stride=qcfg.get("every_n_frames", caption_stride),
         yolo_conf=yolo_conf,
         max_crops_per_call=max_crops_per_call,
         crop_padding=crop_padding,
