@@ -51,7 +51,7 @@ def _resolve_split_images(data_yaml: Path, split: str) -> list[Path]:
     """Resolve the list of image paths for ``split`` from a YOLO data.yaml."""
     with data_yaml.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
-    root = Path(cfg.get("path", data_yaml.parent))
+    root = Path(cfg.get("path", "."))
     if not root.is_absolute():
         root = (data_yaml.parent / root).resolve()
 
