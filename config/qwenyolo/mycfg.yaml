@@ -49,6 +49,21 @@ qwen:
 
     Return the label in the format requested. Do not add prose,
     explanations, bounding boxes, or markdown.
+
+    OCCLUSION AND IMAGE ARTIFACTS
+
+    The crop may be partly obscured by foliage, branches, fences, railings,
+    shadows, reflections, motion blur, or low resolution. These are NOT
+    evidence about the object's condition — judge only the object itself.
+    - Do NOT label a vehicle "crashed" because of overhanging branches, leaves,
+      a fence, shadows, or reflections. Use "crashed" only for actual
+      deformation, denting, overturning, smoke, or debris on the vehicle's
+      own body.
+    - Do NOT label a person "injured" because of an occluding fence, branches,
+      blur, or pixelation. Judge only the person's own visible posture.
+    - If occlusion or low resolution leaves the condition genuinely unclear,
+      prefer the neutral status ("intact car", "standing") rather than
+      guessing damage or injury.
   user_prompt:
 
 
