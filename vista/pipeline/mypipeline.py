@@ -38,8 +38,9 @@ class MyPipeline(VistaPipeline):
 
     def __init__(
         self,
-        yolo_model: YOLO,
+        yolo_model: YOLO | YOLOE,
         captioner: CropCaptioner | None,
+        category_map: dict[str, str],
         caption_stride: int = 15,
         yolo_conf: float | None = None,
         max_crops_per_call: int = 12,
@@ -47,6 +48,7 @@ class MyPipeline(VistaPipeline):
     ) -> None:
         self.yolo = yolo_model
         self.captioner = captioner
+        self.category_map = category_map
         self.caption_stride = caption_stride
         self.yolo_conf = yolo_conf
         self.max_crops_per_call = max_crops_per_call
@@ -74,14 +76,15 @@ class MyPipeline(VistaPipeline):
             ):
                 tid = int(tid.item())
                 yolo_cat = results.names.get(int(cls.item()), "unknown")
-                if yolo_cat in IGNORE_CATEGORIES:
+                mapped_cat = self.category_map.get(yolo_cat)
+                if mapped_cat is None: #class outside of the taxonomy is discarded
                     continue
                 x1, y1, x2, y2 = box.cpu().numpy().tolist()
                 prev = self._track_db.get(tid, {})
                 active[tid] = {
                     "bbox": [x1, y1, x2, y2],
                     "yolo_category": yolo_cat,
-                    "category": prev.get("category", yolo_cat),
+                    "category": prev.get("category", mapped_cat),
                     "caption":  prev.get("caption"),
                     "conf":     float(results.boxes.conf[i].item()),
                 }
@@ -100,7 +103,7 @@ class MyPipeline(VistaPipeline):
                     continue
                 active[tid]["caption"] = label
                 active[tid]["category"] = LABEL_TO_CATEGORY.get(
-                    label.lower(), active[tid]["yolo_category"]
+                    label.lower(), active[tid]["category"]
                 )
 
         # 3) merge and emit
