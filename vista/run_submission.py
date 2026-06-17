@@ -96,7 +96,7 @@ def generate_submission(
 
             for tid, rec in tracks.items():
                 writer.writerow([video_id, tid, rec["frame_start"], rec["frame_end"],
-                                 rec["caption"] or ""])
+                                rec["caption"] or ""])
 
     print(f"Wrote {out_csv}", flush=True)
     return out_csv
@@ -104,7 +104,7 @@ def generate_submission(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+                                    formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--videos", required=True, help="Folder of input videos")
     parser.add_argument("--out", required=True, help="Output submission.csv path")
     parser.add_argument("--config", default=None, help="QwenYolo config yaml (for the captioner)")

@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from PIL import Image
-from ultralytics import YOLO
+from ultralytics import YOLO, YOLOE
 
 from vista.BindingOutput import LABEL_TO_CATEGORY
 from vista.pipeline.base import Detection, FrameResult, VistaPipeline
@@ -44,7 +44,8 @@ class MyPipeline(VistaPipeline):
         caption_stride: int = 15,
         yolo_conf: float | None = None,
         max_crops_per_call: int = 12,
-        crop_padding: int = 8,
+        crop_frac: float = 0.1,
+        min_crop_size: int = 256,
     ) -> None:
         self.yolo = yolo_model
         self.captioner = captioner
@@ -52,7 +53,8 @@ class MyPipeline(VistaPipeline):
         self.caption_stride = caption_stride
         self.yolo_conf = yolo_conf
         self.max_crops_per_call = max_crops_per_call
-        self.crop_padding = crop_padding
+        self.crop_frac = crop_frac
+        self.min_crop_size = min_crop_size
         self._track_db: dict[int, dict] = {}
 
     def reset(self) -> None:
@@ -96,7 +98,7 @@ class MyPipeline(VistaPipeline):
         # 2) VLM crop captioning every caption_stride frames
         if (frame_idx % self.caption_stride == 0) and active and self.captioner is not None:
             tids = list(active)
-            crops = [_crop(frame, active[t]["bbox"], W, H, self.crop_padding) for t in tids]
+            crops = [_crop(frame, active[t]["bbox"], W, H, self.crop_frac, self.min_crop_size) for t in tids]
             labels = self._caption_in_batches(crops, frame_idx)
             for tid, label in zip(tids, labels):
                 if not label:
@@ -136,15 +138,24 @@ class MyPipeline(VistaPipeline):
         return out
 
 
-def _crop(frame: Image.Image, bbox, W: int, H: int, pad: int) -> Image.Image:
+def _crop(frame: Image.Image, bbox, W: int, H: int,frac: float, min_size: int) -> Image.Image:
     x1, y1, x2, y2 = bbox
-    x1 = max(0, int(x1) - pad)
-    y1 = max(0, int(y1) - pad)
-    x2 = min(W, int(x2) + pad)
-    y2 = min(H, int(y2) + pad)
-    if x2 <= x1 or y2 <= y1:
+    mx, my = (x2 - x1) * frac, (y2 - y1) * frac          # margine = frazione del box
+    cx1 = max(0, int(x1 - mx))
+    cy1 = max(0, int(y1 - my))
+    cx2 = min(W, int(x2 + mx))
+    cy2 = min(H, int(y2 + my))
+    if cx2 <= cx1 or cy2 <= cy1:
         return frame.crop((0, 0, 1, 1))
-    return frame.crop((x1, y1, x2, y2))
+    crop = frame.crop((cx1, cy1, cx2, cy2))
+    long_side = max(crop.size)
+    if long_side < min_size:                              # floor: solo upscaling
+        scale = min_size / long_side
+        crop = crop.resize(
+            (round(crop.width * scale), round(crop.height * scale)),
+            Image.LANCZOS,
+        )
+    return crop
 
 
 # ── Qwen adapter ──────────────────────────────────────────────────────────────
@@ -218,10 +229,11 @@ class QwenCropCaptioner:
             out_ids = self.qwen.model.generate(**inputs, **sampling)
         gen_ids = [out[len(inp):] for inp, out in zip(inputs["input_ids"], out_ids)]
         raw = processor.batch_decode(gen_ids, skip_special_tokens=True)[0]
-
+        parse_ok = True
         try:
             parsed = json.loads(repair_json(raw))
         except Exception:
+            parse_ok = False
             parsed = {}
         if isinstance(parsed, dict):
             entries = parsed.get("captions", [])
@@ -239,17 +251,16 @@ class QwenCropCaptioner:
             else:
                 labels.append("")
         labels += [""] * (len(crops) - len(labels))
+        n_nonempty = sum(1 for l in labels if l.strip())
+        log(f"[qwen-diag] crops={len(crops)} parse_ok={parse_ok} "
+            f"entries={len(entries)} nonempty={n_nonempty} raw={raw[:160]!r}") 
         return labels
 # ── builder ───────────────────────────────────────────────────────────────────
 
 def build_mypipeline_from_config(
-    config_path: str | None,
-    yolo_weights: str = "yolov8s.pt",
-    caption_stride: int = 15,
-    use_qwen: bool = True,
-    yolo_conf: float | None = None,
-    max_crops_per_call: int = 12,
-    crop_padding: int = 8,
+    config_path, yolo_weights, caption_stride=15, use_qwen=True,
+    yolo_conf=None, max_crops_per_call=12, crop_frac=0.1, min_crop_size=256,
+    category_map=None,
 ) -> MyPipeline:
     """Construct a MyPipeline from a yaml config (same shape as cfg used by
     ``vista.qwen.get_model``).
@@ -262,7 +273,8 @@ def build_mypipeline_from_config(
         use_qwen:           If False, skip the captioner (tracking-only mode).
         yolo_conf:          YOLO detection confidence threshold.
         max_crops_per_call: Max crops sent to the VLM in a single call.
-        crop_padding:       Pixels of padding around each crop.
+        crop_frac:          Fraction of the bounding box to include in the crop.
+        min_crop_size:      Minimum size of the cropped image.
     """
     import yaml
 
@@ -282,8 +294,10 @@ def build_mypipeline_from_config(
     return MyPipeline(
         yolo_model=yolo,
         captioner=captioner,
+        category_map=category_map or {},
         caption_stride=qcfg.get("every_n_frames", caption_stride),
         yolo_conf=yolo_conf,
         max_crops_per_call=max_crops_per_call,
-        crop_padding=crop_padding,
+        crop_frac=crop_frac,
+        min_crop_size=min_crop_size,
     )
