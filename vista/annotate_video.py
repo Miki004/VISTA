@@ -31,7 +31,13 @@ from PIL import Image
 from vista.pipeline.base import FrameResult, VistaPipeline, open_video
 
 _FONT = cv2.FONT_HERSHEY_SIMPLEX
-
+COCO_CATEGORY_MAP = {
+    "car": "car", "truck": "car", "bus": "car", "motorcycle": "car",
+    "person": "person",
+}
+YOLOE_CATEGORY_MAP = {
+    "crashed car": "car", "car": "car", "person": "person",
+}
 
 def _color_for(track_id: int | None) -> tuple[int, int, int]:
     """Deterministic, well-separated BGR colour for a track id."""
@@ -207,11 +213,13 @@ def main() -> None:
     parser.add_argument("--end-frame", type=int, default=None)
     parser.add_argument("--fourcc", default="mp4v", help="VideoWriter codec")
     args = parser.parse_args()
+    from vista.pipeline.mypipeline import build_mypipeline_from_config
 
-    pipeline = _build_qwenyolo_from_config(
+    pipeline = build_mypipeline_from_config(
         config_path=args.config,
         yolo_weights=args.yolo_weights,
         caption_stride=args.caption_stride,
+        category_map=COCO_CATEGORY_MAP,
         use_qwen=not args.no_qwen,
     )
     annotate_video(

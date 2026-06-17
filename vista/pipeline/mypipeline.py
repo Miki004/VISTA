@@ -29,7 +29,13 @@ from vista.utils_fun import IGNORE_CATEGORIES, log
 
 
 CropCaptioner = Callable[[list[Image.Image]], list[str]]
-
+COCO_CATEGORY_MAP = {
+    "car": "car", "truck": "car", "bus": "car", "motorcycle": "car",
+    "person": "person",
+}
+YOLOE_CATEGORY_MAP = {
+    "crashed car": "car", "car": "car", "person": "person",
+}
 
 # ── pipeline ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +52,7 @@ class MyPipeline(VistaPipeline):
         max_crops_per_call: int = 12,
         crop_frac: float = 0.1,
         min_crop_size: int = 256,
+        min_hits: int = 3,
     ) -> None:
         self.yolo = yolo_model
         self.captioner = captioner
@@ -55,10 +62,13 @@ class MyPipeline(VistaPipeline):
         self.max_crops_per_call = max_crops_per_call
         self.crop_frac = crop_frac
         self.min_crop_size = min_crop_size
+        self.min_hits = min_hits
         self._track_db: dict[int, dict] = {}
+        self._hits = {}
 
     def reset(self) -> None:
         self._track_db.clear()
+        self._hits.clear()
 
     def forward(self, frame: Image.Image, frame_idx: int) -> FrameResult:
         import cv2, numpy as np
@@ -83,6 +93,7 @@ class MyPipeline(VistaPipeline):
                     continue
                 x1, y1, x2, y2 = box.cpu().numpy().tolist()
                 prev = self._track_db.get(tid, {})
+                self._hits[tid] = self._hits.get(tid, 0) + 1
                 active[tid] = {
                     "bbox": [x1, y1, x2, y2],
                     "yolo_category": yolo_cat,
@@ -96,7 +107,9 @@ class MyPipeline(VistaPipeline):
             del self._track_db[tid]
 
         # 2) VLM crop captioning every caption_stride frames
-        if (frame_idx % self.caption_stride == 0) and active and self.captioner is not None:
+        is_stride = (frame_idx % self.caption_stride == 0)
+        needs = [t for t in active if self._hits.get(t,0)>=self.min_hits and active[t]["caption"] is None]
+        if  active and self.captioner is not None and (is_stride or needs):
             tids = list(active)
             crops = [_crop(frame, active[t]["bbox"], W, H, self.crop_frac, self.min_crop_size) for t in tids]
             labels = self._caption_in_batches(crops, frame_idx)
@@ -120,7 +133,7 @@ class MyPipeline(VistaPipeline):
                 track_id=tid,
                 caption=tr.get("caption"),
             )
-            for tid, tr in self._track_db.items()
+            for tid, tr in self._track_db.items() if self._hits.get(tid, 0) >= self.min_hits
         ]
         return FrameResult(detections=detections, frame_idx=frame_idx)
 
@@ -259,7 +272,7 @@ class QwenCropCaptioner:
 
 def build_mypipeline_from_config(
     config_path, yolo_weights, caption_stride=15, use_qwen=True,
-    yolo_conf=None, max_crops_per_call=12, crop_frac=0.1, min_crop_size=256,
+    yolo_conf=None, max_crops_per_call=12, crop_frac=0.1, min_crop_size=256,min_hits=3,
     category_map=None,
 ) -> MyPipeline:
     """Construct a MyPipeline from a yaml config (same shape as cfg used by
@@ -300,4 +313,5 @@ def build_mypipeline_from_config(
         max_crops_per_call=max_crops_per_call,
         crop_frac=crop_frac,
         min_crop_size=min_crop_size,
+        min_hits = min_hits,
     )
