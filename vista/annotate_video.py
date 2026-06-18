@@ -141,6 +141,7 @@ def annotate_video(
     """
     video_path, out_path = Path(video_path), Path(out_path)
     cap = open_video(str(video_path))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -151,6 +152,7 @@ def annotate_video(
     if not writer.isOpened():
         cap.release()
         raise RuntimeError(f"Cannot open VideoWriter for: {out_path} (codec {fourcc})")
+    repr(pipeline)
 
     pipeline.reset()
     if start_frame > 0:
@@ -168,7 +170,7 @@ def annotate_video(
             result = pipeline.forward(pil, frame_idx)
             writer.write(draw_frame(bgr, result))
             if progress_every and frame_idx % progress_every == 0:
-                print(f"[annotate] frame {frame_idx}: {len(result.detections)} detections",
+                print(f"[annotate] frame {frame_idx}/{frame_count}: {len(result.detections)} detections",
                       flush=True)
             frame_idx += 1
     finally:
@@ -207,8 +209,12 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="Output (annotated) video path")
     parser.add_argument("--config", default=None, help="QwenYolo config yaml (for the captioner)")
     parser.add_argument("--yolo-weights", default="yolov8s.pt", help="YOLO weights")
+    parser.add_argument("yolo_model", default="YOLO", help="YOLO model type (e.g. YOLO, YOLOE)")
     parser.add_argument("--caption-stride", type=int, default=30, help="Run the VLM every N frames")
     parser.add_argument("--no-qwen", action="store_true", help="Tracking only, skip the captioner")
+    parser.add_argument("--category_map", default="coco", choices=["coco", "yoloe", "none"],
+                        help="Category mapping for YOLO classes (default coco)")
+    parser.add_argument("--yolo_conf", type=float, default=None, help="YOLO confidence threshold")
     parser.add_argument("--start-frame", type=int, default=0)
     parser.add_argument("--end-frame", type=int, default=None)
     parser.add_argument("--fourcc", default="mp4v", help="VideoWriter codec")
@@ -219,7 +225,9 @@ def main() -> None:
         config_path=args.config,
         yolo_weights=args.yolo_weights,
         caption_stride=args.caption_stride,
-        category_map=COCO_CATEGORY_MAP,
+        category_map=COCO_CATEGORY_MAP if args.category_map == "coco" else
+                     YOLOE_CATEGORY_MAP if args.category_map == "yoloe" else {},
+        yolo_conf=args.yolo_conf,
         use_qwen=not args.no_qwen,
     )
     annotate_video(

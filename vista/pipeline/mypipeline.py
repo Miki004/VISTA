@@ -65,7 +65,14 @@ class MyPipeline(VistaPipeline):
         self.min_hits = min_hits
         self._track_db: dict[int, dict] = {}
         self._hits = {}
-
+    
+    def __repr__(self):
+        return (f"MyPipeline(yolo_model={self.yolo}, captioner={self.captioner}, "
+                f"category_map={self.category_map}, caption_stride={self.caption_stride}, "
+                f"yolo_conf={self.yolo_conf}, max_crops_per_call={self.max_crops_per_call}, "
+                f"crop_frac={self.crop_frac}, min_crop_size={self.min_crop_size}, "
+                f"min_hits={self.min_hits})")
+    
     def reset(self) -> None:
         self._track_db.clear()
         self._hits.clear()
@@ -271,8 +278,8 @@ class QwenCropCaptioner:
 # ── builder ───────────────────────────────────────────────────────────────────
 
 def build_mypipeline_from_config(
-    config_path, yolo_weights, caption_stride=15, use_qwen=True,
-    yolo_conf=None, max_crops_per_call=12, crop_frac=0.1, min_crop_size=256,min_hits=3,
+    config_path, yolo_weights,yolo_model, caption_stride=30, use_qwen=True,
+    yolo_conf=None, max_crops_per_call=12, crop_frac=0.2, min_crop_size=256,min_hits=3,
     category_map=None,
 ) -> MyPipeline:
     """Construct a MyPipeline from a yaml config (same shape as cfg used by
@@ -297,7 +304,12 @@ def build_mypipeline_from_config(
             cfg = yaml.safe_load(f) or {}
     
     qcfg = cfg.get("qwen", {})
-    yolo = YOLO(yolo_weights)
+    if yolo_model == "YOLO":
+        from ultralytics import YOLO
+        yolo = YOLO(yolo_weights)
+    elif yolo_model == "YOLOE":
+        from ultralytics import YOLOE
+        yolo = YOLOE(yolo_weights)
     captioner: CropCaptioner | None = None
     if use_qwen:
         from vista.qwen import get_model
