@@ -1,7 +1,7 @@
 """
 Usage
 -----
-python measure_coverage.py \
+python coverage.py \
     --video data/VISTA/test/seq01.mp4 \
     --config config/qwenyolo/cfg.yaml \
     --yolo-weights runs/yoloe11m_lp/weights/best.pt \
