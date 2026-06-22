@@ -209,7 +209,7 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="Output (annotated) video path")
     parser.add_argument("--config", default=None, help="QwenYolo config yaml (for the captioner)")
     parser.add_argument("--yolo-weights", default="yolov8s.pt", help="YOLO weights")
-    parser.add_argument("yolo_model", default="YOLO", help="YOLO model type (e.g. YOLO, YOLOE)")
+    parser.add_argument("--yolo_model", default="YOLO", help="YOLO model type (e.g. YOLO, YOLOE)")
     parser.add_argument("--caption-stride", type=int, default=30, help="Run the VLM every N frames")
     parser.add_argument("--no-qwen", action="store_true", help="Tracking only, skip the captioner")
     parser.add_argument("--category_map", default="coco", choices=["coco", "yoloe", "none"],
@@ -224,6 +224,7 @@ def main() -> None:
     pipeline = build_mypipeline_from_config(
         config_path=args.config,
         yolo_weights=args.yolo_weights,
+        yolo_model = args.yolo_model,
         caption_stride=args.caption_stride,
         category_map=COCO_CATEGORY_MAP if args.category_map == "coco" else
                      YOLOE_CATEGORY_MAP if args.category_map == "yoloe" else {},

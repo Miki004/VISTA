@@ -34,7 +34,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from mypipeline import (
+from vista.pipeline.mypipeline import (
     build_mypipeline_from_config,
     COCO_CATEGORY_MAP,
     YOLOE_CATEGORY_MAP,
